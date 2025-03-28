@@ -131,7 +131,6 @@ app.layout = dbc.Container(
         dbc.Row(
             dbc.Col(html.H1("Philippine Climate Data Visualization", className="text-center mb-4"))
         ),
-
         # Main content (Map + Charts)
         dbc.Row(
             [
@@ -142,7 +141,7 @@ app.layout = dbc.Container(
                             id="map-title",
                             className="text-center font-weight-bold p-2",
                         ),
-                        dcc.Graph(id="choropleth-map", style={"height": "90vh"}),
+                        dcc.Graph(id="choropleth-map", style={"height": "95vh"}),
                         dcc.Slider(
                             id="year-slider",
                             min=int(gdf_decadal_adm1["decade"].min()),
@@ -158,8 +157,20 @@ app.layout = dbc.Container(
                 # Right Column: Charts
                 dbc.Col(
                     [
+                        html.Div(
+                            id="line-chart-title",
+                            className="text-center font-weight-bold p-2",
+                        ),
                         dcc.Graph(id="line-chart", style={"height": "30vh"}),
+                        html.Div(
+                            id="bar-chart-title",
+                            className="text-center font-weight-bold p-2",
+                        ),
                         dcc.Graph(id="bar-chart", style={"height": "30vh"}),
+                        html.Div(
+                            id="line-chart-hli-monthly-title",
+                            className="text-center font-weight-bold p-2",
+                        ),
                         dcc.Graph(id="line-chart-hli-monthly", style={"height": "30vh"}),
                     ],
                     width=6,  # Takes 6/12 of the screen (half)
@@ -215,6 +226,9 @@ def update_choropleth(selected_year):
         Output("line-chart", "figure"),
         Output("bar-chart", "figure"),
         Output("line-chart-hli-monthly", "figure"),
+        Output("line-chart-title", "children"),
+        Output("bar-chart-title", "children"),
+        Output("line-chart-hli-monthly-title", "children"),
     ],
     [Input("choropleth-map", "clickData")],
 )
@@ -264,7 +278,7 @@ def update_charts(clickData):
             y=adm1_df["HLI_10yr_MA"],
             mode="lines",
             name="10-Year MA",
-            line=dict(dash="dot", width=2),
+            line=dict(dash="dash", width=2),
         )
     )
 
@@ -275,13 +289,13 @@ def update_charts(clickData):
             y=adm1_df["HLI_20yr_MA"],
             mode="lines",
             name="20-Year MA",
-            line=dict(dash="longdash", width=2),
+            line=dict(dash="dash", width=2),
         )
     )
 
     # Layout settings
     fig_line.update_layout(
-        title=f"HLI Trends - {selected_region}",
+        # title=f"HLI Trends - {selected_region}",
         xaxis_title="Year",
         yaxis_title="Heat Load Index (HLI)",
         legend=dict(
@@ -324,6 +338,7 @@ def update_charts(clickData):
             y=adm1_df["wind_speed_10m_max"],
             mode="markers+lines",
             name="Wind Speed",
+            line=dict(dash="dot", width=2),
         ),
         secondary_y=True,  # Assign this trace to the secondary y-axis
     )
@@ -335,13 +350,14 @@ def update_charts(clickData):
             y=adm1_df["shortwave_radiation_sum"],
             mode="markers+lines",
             name="Shortwave Radiation",
+            line=dict(dash="dot", width=2),
         ),
         secondary_y=True,  # Assign this trace to the secondary y-axis
     )
 
     # Update layout for dual Y-Axis
     fig_bar.update_layout(
-        title=f"Temperature & Wind Speed - {selected_region}",
+        # title=f"Temperature & Wind Speed - {selected_region}",
         yaxis_title="Temperature (°C)",  # Left Y-Axis
         yaxis2_title="Wind Speed / Radiation",  # Right Y-Axis
         barmode="group",  # Group bars together
@@ -362,12 +378,19 @@ def update_charts(clickData):
     ].copy()
 
     fig_monthly_hli = px.line(
-        adm1_month_df.pivot(index="month", columns="decade", values="HLI"),
-        labels={"x": "Month", "y": "Year", "color": "HLI"},
-        title=f"Monthly HLI Trends - {selected_region}",
+        adm1_month_df,
+        x="month",
+        y="HLI",
+        color="decade",
+        labels={"month": "Month", "HLI": "Heat Load Index (HLI)", "decade": "Decade"},
+        markers=True,  # Adds markers
     )
+    
+    line_chart_title = f"HLI Trends - {selected_region}"
+    bar_chart_title = f"Temperature & Wind Speed - {selected_region}"
+    line_chart_hli_monthly_title = f"Monthly HLI Trends - {selected_region}"
 
-    return fig_line, fig_bar, fig_monthly_hli
+    return fig_line, fig_bar, fig_monthly_hli, line_chart_title, bar_chart_title, line_chart_hli_monthly_title
 
 
 # Run app
