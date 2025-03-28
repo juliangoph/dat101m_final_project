@@ -142,7 +142,7 @@ app.layout = dbc.Container(
                             id="map-title",
                             className="text-center font-weight-bold p-2",
                         ),
-                        dcc.Graph(id="choropleth-map", style={"height": "60vh"}),
+                        dcc.Graph(id="choropleth-map", style={"height": "90vh"}),
                         dcc.Slider(
                             id="year-slider",
                             min=int(gdf_decadal_adm1["decade"].min()),
