@@ -89,6 +89,7 @@ gdf_decadal_adm1["decade"] = gdf_decadal_adm1["decade"].astype(int, errors="igno
 
 # create dash app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+server = app.server  # Required for deployment with Gunicorn
 
 app.layout = dbc.Container(
     [
