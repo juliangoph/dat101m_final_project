@@ -6,13 +6,14 @@ import pandas as pd
 import geopandas as gpd
 import json
 from plotly.subplots import make_subplots
+import dash_bootstrap_components as dbc
 
 # Load preprocessed data (you'll need to adjust paths)
 df = pd.read_csv(
-    "data\\philippine_cities_daily_data_1950_to_2025.csv",
+    "data//philippine_cities_daily_data_1950_to_2025.csv",
     parse_dates=["date"],
 )
-gdf = gpd.read_file("data\\phl_adm_simple_maps.gpkg")
+gdf = gpd.read_file("data//phl_adm_simple_maps.gpkg")
 
 # add heat load index
 df["HLI"] = (df["temperature_2m_mean"] + (0.1 * df["shortwave_radiation_sum"])) - (
@@ -122,90 +123,52 @@ gdf_decadal_adm1 = (
 gdf_decadal_adm1["decade"] = gdf_decadal_adm1["decade"].astype(int, errors="ignore")
 
 # create dash app
-app = dash.Dash(__name__)
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-app.layout = html.Div(
-    style={"display": "flex", "flex-direction": "column", "width": "100%"},
-    children=[
-        # title div
-        html.Div(
-            style={"text-align": "center", "width": "100%"},
-            children=[html.H1("Philippine Climate Data Visualization")],
+app.layout = dbc.Container(
+    [
+        # Title
+        dbc.Row(
+            dbc.Col(html.H1("Philippine Climate Data Visualization", className="text-center mb-4"))
         ),
-        # main div
-        html.Div(
-            style={
-                "display": "flex",
-                "flex-direction": "row",
-                "width": "100%",
-            },
-            children=[
-                # left col (1/3 of the screen for the map)
-                html.Div(
-                    style={
-                        "width": "50%",
-                        "padding": "10px",
-                        "display": "flex",
-                        "flex-direction": "column",
-                        "height": "90vh",
-                    },
-                    children=[
-                        # Title Div (Above Map)
+
+        # Main content (Map + Charts)
+        dbc.Row(
+            [
+                # Left Column: Map
+                dbc.Col(
+                    [
                         html.Div(
                             id="map-title",
-                            style={
-                                "text-align": "center",
-                                "font-size": "24px",
-                                "font-weight": "bold",
-                                "padding": "10px",
-                                "height": "10%",
-                            },
+                            className="text-center font-weight-bold p-2",
                         ),
-                        # Map Container
-                        html.Div(
-                            style={
-                                "height": "90%",
-                            },
-                            children=[
-                                dcc.Graph(
-                                    id="choropleth-map", style={"height": "100%"}
-                                ),
-                                dcc.Slider(
-                                    id="year-slider",
-                                    min=int(gdf_decadal_adm1["decade"].min()),
-                                    max=int(gdf_decadal_adm1["decade"].max()),
-                                    value=int(gdf_decadal_adm1["decade"].min()),
-                                    marks={
-                                        str(int(decade)): str(int(decade))
-                                        for decade in gdf_decadal_adm1[
-                                            "decade"
-                                        ].unique()
-                                    },
-                                    step=None,
-                                ),
-                            ],
+                        dcc.Graph(id="choropleth-map", style={"height": "60vh"}),
+                        dcc.Slider(
+                            id="year-slider",
+                            min=int(gdf_decadal_adm1["decade"].min()),
+                            max=int(gdf_decadal_adm1["decade"].max()),
+                            value=int(gdf_decadal_adm1["decade"].min()),
+                            marks={str(int(decade)): str(int(decade)) for decade in gdf_decadal_adm1["decade"].unique()},
+                            step=None,
                         ),
                     ],
+                    width=6,  # Takes 6/12 of the screen (half)
                 ),
-                # right col (2/3 of the screen for charts)
-                html.Div(
-                    style={
-                        "width": "50%",
-                        "padding": "10px",
-                        "display": "flex",
-                        "flex-direction": "column",
-                    },
-                    children=[
+
+                # Right Column: Charts
+                dbc.Col(
+                    [
                         dcc.Graph(id="line-chart", style={"height": "30vh"}),
                         dcc.Graph(id="bar-chart", style={"height": "30vh"}),
-                        dcc.Graph(
-                            id="line-chart-hli-monthly", style={"height": "30vh"}
-                        ),
+                        dcc.Graph(id="line-chart-hli-monthly", style={"height": "30vh"}),
                     ],
+                    width=6,  # Takes 6/12 of the screen (half)
                 ),
-            ],
+            ]
         ),
     ],
+    fluid=True,  # Makes the container full-width
+    className="p-4 bg-light",  # Adds padding and background color
 )
 
 
@@ -409,4 +372,4 @@ def update_charts(clickData):
 
 # Run app
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run(debug=True)
