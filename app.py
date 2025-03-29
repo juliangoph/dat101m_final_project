@@ -117,7 +117,7 @@ app.layout = dbc.Container(
                         html.Div(
                             [
                                 html.Div(
-                                    dcc.Graph(id="choropleth-map", style={"height": "87vh"}),
+                                    dcc.Graph(id="choropleth-map", style={"height": "87vh"}, responsive=True),
                                     className="map-frame",
                                 ),
                                 html.Button("Reset Selection", id="reset-button", n_clicks=0, className="btn btn-secondary"),
@@ -125,17 +125,25 @@ app.layout = dbc.Container(
                             className="map-container",
                         ),
                     ],
-                    width=6,  # Takes 6/12 of the screen (half)
+                    width={"size": 6, "order": 1, "offset": 0},  # Default 6/12 width
+                    xs=12,
+                    sm=12,
+                    md=6,
+                    lg=6,
                 ),
 
                 # Right Column: Charts
                 dbc.Col(
                     [
-                        html.Div(dcc.Graph(id="line-chart", style={"height": "30vh"}), style={"padding-bottom": "15px"}),
-                        html.Div(dcc.Graph(id="bar-chart", style={"height": "30vh"}), style={"padding-bottom": "15px"}),
-                        html.Div(dcc.Graph(id="line-chart-hli-monthly", style={"height": "30vh"}), style={"padding-bottom": "15px"}),
+                        html.Div(dcc.Graph(id="line-chart", responsive=True), className="chart-container"),
+                        html.Div(dcc.Graph(id="bar-chart", responsive=True), className="chart-container"),
+                        html.Div(dcc.Graph(id="line-chart-hli-monthly", responsive=True), className="chart-container"),
                     ],
-                    width=6,  # Takes 6/12 of the screen (half)
+                    width={"size": 6, "order": 1, "offset": 0},  # Default 6/12 width
+                    xs=12,
+                    sm=12,
+                    md=6,
+                    lg=6,
                 )
             ]
         ),
@@ -155,14 +163,15 @@ def apply_chart_layout(fig, title, x_label="Year", y_label="Value"):
         title=title,
         xaxis_title=x_label,
         yaxis_title=y_label,
+        autosize=True,  # Ensures the figure resizes dynamically
         legend=dict(
-            orientation="h",  # Horizontal legend
+            orientation="h",
             yanchor="top",
-            y=-0.5,  # Moves the legend below the x-axis label
+            y=-0.5,
             xanchor="center",
             x=0.5,
         ),
-        margin=dict(b=80)  # Increases bottom margin to prevent overlap
+        margin=dict(b=80)  # Adjust margin for legend placement
     )
 
 # calculate the aggregate on all regions
@@ -172,18 +181,24 @@ all_regions_monthly_avg = gdf_month_decadal_adm1.groupby(["month", "decade"])[qu
 # Callbacks
 @app.callback(
     Output("choropleth-map", "figure"),
-    Input("year-slider", "value"),
-    Input("choropleth-map", "clickData")  # Capture clicked region
+    [Input("year-slider", "value"),
+     Input("choropleth-map", "clickData"),
+     Input("reset-button", "n_clicks")]  # Capture Reset Button Click
 )
-def update_choropleth(selected_year, clickData):
+def update_choropleth(selected_year, clickData, n_clicks):
+    triggered_id = ctx.triggered_id
+    
     global_hli_min = gdf_decadal_adm1["HLI"].min()
     global_hli_max = gdf_decadal_adm1["HLI"].max()
 
     # Filter data for the selected year
     filtered_df = gdf_decadal_adm1[gdf_decadal_adm1["decade"] == selected_year]
 
-    # Get the clicked region (default to None)
-    selected_region = get_selected_region(clickData)
+    # Determine the selected region, reset if the reset button is clicked
+    if triggered_id == "reset-button":
+        selected_region = "All Regions"  # Force reset to ALL REGIONS
+    else:
+        selected_region = get_selected_region(clickData)  # Only run if reset wasn't clicked
 
     # Create Choropleth Map
     fig = px.choropleth(
@@ -196,13 +211,21 @@ def update_choropleth(selected_year, clickData):
         range_color=[global_hli_min, global_hli_max],
     )
 
-    # Update Borders: Highlight Selected Region
-    fig.update_traces(
-        marker_line_color=[
+    # Reset all borders to white if reset button is clicked
+    if selected_region == "All Regions":
+        print("Resetting map colors to white.")
+        fig.update_traces(
+            marker_line_color="white"
+        )
+    else:
+        print(f"Highlighting region: {selected_region}")
+        border_colors = [
             "black" if region == selected_region else "white"
             for region in filtered_df["adm1"]
-        ],
-    )
+        ]
+        fig.update_traces(
+            marker_line_color=border_colors
+        )
 
     # Remove background map and maximize plot area
     fig.update_geos(
@@ -213,6 +236,7 @@ def update_choropleth(selected_year, clickData):
 
     # Maximize the size of the map in the canvas
     fig.update_layout(
+        uirevision=str(n_clicks),
         margin={"r": 0, "t": 0, "l": 0, "b": 0},
         dragmode=False,
     )
@@ -235,8 +259,8 @@ def update_charts(clickData, _):
     selected_region = "All Regions" if triggered_id == "reset-button" else get_selected_region(clickData)
 
     # Use precomputed averages instead of redundant groupby calculations
-    adm1_df = all_regions_decadal_avg if selected_region == "All Regions" else gdf_decadal_adm1[gdf_decadal_adm1["adm1"] == selected_region]
-    adm1_month_df = all_regions_monthly_avg if selected_region == "All Regions" else gdf_month_decadal_adm1[gdf_month_decadal_adm1["adm1"] == selected_region]
+    adm1_df = all_regions_decadal_avg if selected_region == "All Regions" else gdf_decadal_adm1[gdf_decadal_adm1["adm1"] == selected_region].copy()
+    adm1_month_df = all_regions_monthly_avg if selected_region == "All Regions" else gdf_month_decadal_adm1[gdf_month_decadal_adm1["adm1"] == selected_region].copy()
 
     adm1_df["HLI_5yr_MA"] = adm1_df["HLI"].rolling(window=5, min_periods=1).mean()
     adm1_df["HLI_10yr_MA"] = adm1_df["HLI"].rolling(window=10, min_periods=1).mean()

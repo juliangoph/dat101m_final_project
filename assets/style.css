@@ -30,3 +30,14 @@
 .slider-container {
   padding-bottom: 15px;
 }
+
+#line-chart,
+#bar-chart,
+#line-chart-hli-monthly {
+  height: 30vh;
+  width: 100%;
+}
+
+.chart-container {
+  padding-bottom: 15px;
+}
