@@ -1,5 +1,5 @@
 import dash
-from dash import dcc, html, Input, Output
+from dash import dcc, html, Input, Output, ctx
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
@@ -104,17 +104,25 @@ app.layout = dbc.Container(
                 dbc.Col(
                     [
                         html.Div(
-                            id="map-title",
-                            className="text-center font-weight-bold p-2",
+                            dcc.Slider(
+                                id="year-slider",
+                                min=int(gdf_decadal_adm1["decade"].min()),
+                                max=int(gdf_decadal_adm1["decade"].max()),
+                                value=int(gdf_decadal_adm1["decade"].min()),
+                                marks={str(int(decade)): str(int(decade)) for decade in gdf_decadal_adm1["decade"].unique()},
+                                step=None,
+                            ),
+                            className="slider-container",  # Assign a CSS class
                         ),
-                        dcc.Graph(id="choropleth-map", style={"height": "95vh"}),
-                        dcc.Slider(
-                            id="year-slider",
-                            min=int(gdf_decadal_adm1["decade"].min()),
-                            max=int(gdf_decadal_adm1["decade"].max()),
-                            value=int(gdf_decadal_adm1["decade"].min()),
-                            marks={str(int(decade)): str(int(decade)) for decade in gdf_decadal_adm1["decade"].unique()},
-                            step=None,
+                        html.Div(
+                            [
+                                html.Div(
+                                    dcc.Graph(id="choropleth-map", style={"height": "87vh"}),
+                                    className="map-frame",
+                                ),
+                                html.Button("Reset Selection", id="reset-button", n_clicks=0, className="btn btn-secondary"),
+                            ],
+                            className="map-container",
                         ),
                     ],
                     width=6,  # Takes 6/12 of the screen (half)
@@ -123,24 +131,12 @@ app.layout = dbc.Container(
                 # Right Column: Charts
                 dbc.Col(
                     [
-                        html.Div(
-                            id="line-chart-title",
-                            className="text-center font-weight-bold p-2",
-                        ),
-                        dcc.Graph(id="line-chart", style={"height": "30vh"}),
-                        html.Div(
-                            id="bar-chart-title",
-                            className="text-center font-weight-bold p-2",
-                        ),
-                        dcc.Graph(id="bar-chart", style={"height": "30vh"}),
-                        html.Div(
-                            id="line-chart-hli-monthly-title",
-                            className="text-center font-weight-bold p-2",
-                        ),
-                        dcc.Graph(id="line-chart-hli-monthly", style={"height": "30vh"}),
+                        html.Div(dcc.Graph(id="line-chart", style={"height": "30vh"}), style={"padding-bottom": "15px"}),
+                        html.Div(dcc.Graph(id="bar-chart", style={"height": "30vh"}), style={"padding-bottom": "15px"}),
+                        html.Div(dcc.Graph(id="line-chart-hli-monthly", style={"height": "30vh"}), style={"padding-bottom": "15px"}),
                     ],
                     width=6,  # Takes 6/12 of the screen (half)
-                ),
+                )
             ]
         ),
     ],
@@ -148,17 +144,48 @@ app.layout = dbc.Container(
     className="p-4 bg-light",  # Adds padding and background color
 )
 
+def get_selected_region(clickData):
+    if not clickData or "points" not in clickData or len(clickData["points"]) == 0:
+        return "All Regions"
+    return clickData["points"][0]["location"]
+
+# Helper function for layout
+def apply_chart_layout(fig, title, x_label="Year", y_label="Value"):
+    fig.update_layout(
+        title=title,
+        xaxis_title=x_label,
+        yaxis_title=y_label,
+        legend=dict(
+            orientation="h",  # Horizontal legend
+            yanchor="top",
+            y=-0.5,  # Moves the legend below the x-axis label
+            xanchor="center",
+            x=0.5,
+        ),
+        margin=dict(b=80)  # Increases bottom margin to prevent overlap
+    )
+
+# calculate the aggregate on all regions
+all_regions_decadal_avg = gdf_decadal_adm1.groupby(["decade"])[quantitative_columns].mean().reset_index()
+all_regions_monthly_avg = gdf_month_decadal_adm1.groupby(["month", "decade"])[quantitative_columns].mean().reset_index()
 
 # Callbacks
 @app.callback(
-    [Output("choropleth-map", "figure"), Output("map-title", "children")],
+    Output("choropleth-map", "figure"),
     Input("year-slider", "value"),
+    Input("choropleth-map", "clickData")  # Capture clicked region
 )
-def update_choropleth(selected_year):
+def update_choropleth(selected_year, clickData):
     global_hli_min = gdf_decadal_adm1["HLI"].min()
     global_hli_max = gdf_decadal_adm1["HLI"].max()
 
+    # Filter data for the selected year
     filtered_df = gdf_decadal_adm1[gdf_decadal_adm1["decade"] == selected_year]
+
+    # Get the clicked region (default to None)
+    selected_region = get_selected_region(clickData)
+
+    # Create Choropleth Map
     fig = px.choropleth(
         filtered_df,
         geojson=geojson_data,
@@ -166,8 +193,15 @@ def update_choropleth(selected_year):
         featureidkey="properties.name",
         color="HLI",
         color_continuous_scale="thermal",
-        # title=f"Heat Load Index (HLI) - {selected_year}",
         range_color=[global_hli_min, global_hli_max],
+    )
+
+    # Update Borders: Highlight Selected Region
+    fig.update_traces(
+        marker_line_color=[
+            "black" if region == selected_region else "white"
+            for region in filtered_df["adm1"]
+        ],
     )
 
     # Remove background map and maximize plot area
@@ -183,30 +217,26 @@ def update_choropleth(selected_year):
         dragmode=False,
     )
 
-    fig_title = f"Heat Load Index (HLI) - {selected_year}"
-    return fig, fig_title
-
+    return fig
 
 @app.callback(
     [
         Output("line-chart", "figure"),
         Output("bar-chart", "figure"),
         Output("line-chart-hli-monthly", "figure"),
-        Output("line-chart-title", "children"),
-        Output("bar-chart-title", "children"),
-        Output("line-chart-hli-monthly-title", "children"),
     ],
-    [Input("choropleth-map", "clickData")],
+    [Input("choropleth-map", "clickData"),
+     Input("reset-button", "n_clicks")],  
 )
-def update_charts(clickData):
-    # Default: If no region is clicked, use the first region available
-    if clickData is None:
-        selected_region = gdf_decadal_adm1["adm1"].unique()[0]  # Default region
-    else:
-        selected_region = clickData["points"][0]["location"]  # Get clicked region name
+def update_charts(clickData, _):
+    triggered_id = ctx.triggered_id
 
-    # Filter data for the selected region
-    adm1_df = gdf_decadal_adm1[gdf_decadal_adm1["adm1"] == selected_region].copy()
+    # Force reset if reset-button is clicked
+    selected_region = "All Regions" if triggered_id == "reset-button" else get_selected_region(clickData)
+
+    # Use precomputed averages instead of redundant groupby calculations
+    adm1_df = all_regions_decadal_avg if selected_region == "All Regions" else gdf_decadal_adm1[gdf_decadal_adm1["adm1"] == selected_region]
+    adm1_month_df = all_regions_monthly_avg if selected_region == "All Regions" else gdf_month_decadal_adm1[gdf_month_decadal_adm1["adm1"] == selected_region]
 
     adm1_df["HLI_5yr_MA"] = adm1_df["HLI"].rolling(window=5, min_periods=1).mean()
     adm1_df["HLI_10yr_MA"] = adm1_df["HLI"].rolling(window=10, min_periods=1).mean()
@@ -260,19 +290,7 @@ def update_charts(clickData):
     )
 
     # Layout settings
-    fig_line.update_layout(
-        # title=f"HLI Trends - {selected_region}",
-        xaxis_title="Year",
-        yaxis_title="Heat Load Index (HLI)",
-        legend=dict(
-            orientation="h",
-            entrywidth=70,
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-        ),
-    )
+    apply_chart_layout(fig_line, f"HLI Trends - {selected_region}", "Year", "Heat Load Index (HLI)")
 
     # BAR CHART: Temperature and Wind Speed for Selected Year & Region
     # Create figure with secondary y-axis
@@ -322,27 +340,9 @@ def update_charts(clickData):
     )
 
     # Update layout for dual Y-Axis
-    fig_bar.update_layout(
-        # title=f"Temperature & Wind Speed - {selected_region}",
-        yaxis_title="Temperature (°C)",  # Left Y-Axis
-        yaxis2_title="Wind Speed / Radiation",  # Right Y-Axis
-        barmode="group",  # Group bars together
-        legend=dict(
-            orientation="h",
-            entrywidth=70,
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-        ),
-    )
+    apply_chart_layout(fig_bar, f"Temperature & Wind Speed - {selected_region}", "Decade", "Temperature (°C)")
 
     # LINE CHART: HLI by Month and Decade
-    # Filter data for the selected region
-    adm1_month_df = gdf_month_decadal_adm1[
-        gdf_month_decadal_adm1["adm1"] == selected_region
-    ].copy()
-
     fig_monthly_hli = px.line(
         adm1_month_df,
         x="month",
@@ -351,14 +351,14 @@ def update_charts(clickData):
         labels={"month": "Month", "HLI": "Heat Load Index (HLI)", "decade": "Decade"},
         markers=True,  # Adds markers
     )
-    
-    line_chart_title = f"HLI Trends - {selected_region}"
-    bar_chart_title = f"Temperature & Wind Speed - {selected_region}"
-    line_chart_hli_monthly_title = f"Monthly HLI Trends - {selected_region}"
 
-    return fig_line, fig_bar, fig_monthly_hli, line_chart_title, bar_chart_title, line_chart_hli_monthly_title
+    # Add a title
+    apply_chart_layout(fig_monthly_hli, f"Monthly HLI Trends by Decade - {selected_region}", "Month", "HLI")
+
+    return fig_line, fig_bar, fig_monthly_hli
 
 
 # Run app
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    # app.run_server(debug=True)
+    app.run(debug=True)
