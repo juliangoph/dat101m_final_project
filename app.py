@@ -3,6 +3,7 @@ from dash import dcc, html, Input, Output, ctx
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+import numpy as np
 import geopandas as gpd
 import json
 from plotly.subplots import make_subplots
@@ -13,6 +14,7 @@ df = pd.read_csv(
     "data/processed_philippine_cities_monthly.csv",
 )
 gdf = gpd.read_file("data/phl_adm_simple_maps.gpkg")
+geojson_data = json.loads(gdf.to_json())
 
 # identify quantitative columns for aggregation
 quantitative_columns = [
@@ -23,68 +25,31 @@ quantitative_columns = [
     "HLI",
 ]
 
-## aggregate by df_month_decadal and convert to geospatial dataset
-# aggregate data by month-decade
-df_month_decadal = (
-    df.groupby(["decade", "month", "city_name"]).mean().reset_index()
-)
+def process_spatial_aggregation(df, group_cols, gdf, crs, adm_col="adm1"):
+    # Aggregate by specified grouping columns
+    df_agg = df.groupby(group_cols).mean().reset_index()
 
-# convert GeoDataFrame to JSON for choropleth mapping
-geojson_data = json.loads(gdf.to_json())
+    # Convert to GeoDataFrame and reproject
+    df_agg["geometry"] = gpd.points_from_xy(df_agg["longitude"], df_agg["latitude"])
+    gdf_agg = gpd.GeoDataFrame(df_agg, geometry="geometry", crs=crs).to_crs(crs)
 
-# convert pandas to a gdf
-df_month_decadal["geometry"] = gpd.points_from_xy(
-    df_month_decadal["longitude"], df_month_decadal["latitude"]
-)
+    # Perform spatial join with administrative boundaries
+    merged_gdf = gpd.sjoin(gdf_agg, gdf[["name", "geometry"]], how="left", predicate="intersects")
+    merged_gdf = merged_gdf.rename(columns={"name": adm_col})
 
-# reproject "gdf_month_decadal" to match crs on "gdf"
-gdf_month_decadal = gpd.GeoDataFrame(df_month_decadal, geometry="geometry", crs=gdf.crs)
-gdf_month_decadal = gdf_month_decadal.to_crs(gdf.crs)
+    df_final =  merged_gdf.groupby([adm_col] + [col for col in group_cols if col != "city_name"])[quantitative_columns].mean().reset_index()
 
-# perform spatial join
-merged_gdf_month_decadal = gpd.sjoin(
-    gdf_month_decadal, gdf[["name", "geometry"]], how="left", predicate="intersects"
-)
-merged_gdf_month_decadal = merged_gdf_month_decadal.rename(
-    columns={"name": "adm1"}
-)  # rename col to "adm1"
+    df_final["excl_CAR"] = np.where(df_final[adm_col] == "Cordillera Administrative Region", 1, 0)
 
-# perform aggregation by decade and month
-gdf_month_decadal_adm1 = (
-    merged_gdf_month_decadal.groupby(["adm1", "decade", "month"])[quantitative_columns]
-    .mean()
-    .reset_index()
-)
+    return df_final
 
-gdf_month_decadal_adm1["decade"] = gdf_month_decadal_adm1["decade"].astype(
-    int, errors="ignore"
-)
+# Process monthly decadal aggregation
+gdf_month_decadal_adm1 = process_spatial_aggregation(df, ["decade", "month", "city_name"], gdf, gdf.crs)
+gdf_month_decadal_adm1["decade"] = gdf_month_decadal_adm1["decade"].astype(int, errors="ignore")
 
-## aggregate by df_decadal and convert to geospatial dataset
-# aggregate data by year and then by decade
-df_yearly = df.groupby(["year", "city_name"]).mean().reset_index()
-df_decadal = df_yearly.groupby(["decade", "city_name"]).mean().reset_index()
-
-# convert c to a GeoDataFrame
-df_decadal["geometry"] = gpd.points_from_xy(
-    df_decadal["longitude"], df_decadal["latitude"]
-)
-
-# reproject "gdf_decadal" to match crs on "gdf"
-gdf_decadal = gpd.GeoDataFrame(df_decadal, geometry="geometry", crs=gdf.crs)
-gdf_decadal = gdf_decadal.to_crs(gdf.crs)
-
-# perform spatial join
-merged_gdf = gpd.sjoin(
-    gdf_decadal, gdf[["name", "geometry"]], how="left", predicate="intersects"
-)
-merged_gdf = merged_gdf.rename(columns={"name": "adm1"})  # rename col to "adm1"
-
-# perform aggregation by decade and month
-gdf_decadal_adm1 = (
-    merged_gdf.groupby(["adm1", "decade"])[quantitative_columns].mean().reset_index()
-)
-
+# Process decadal aggregation
+df["decade"] = df["year"] // 10 * 10  # Ensure decade column is created
+gdf_decadal_adm1 = process_spatial_aggregation(df, ["decade", "city_name"], gdf, gdf.crs)
 gdf_decadal_adm1["decade"] = gdf_decadal_adm1["decade"].astype(int, errors="ignore")
 
 # create dash app
@@ -120,7 +85,29 @@ app.layout = dbc.Container(
                                     dcc.Graph(id="choropleth-map", responsive=True),
                                     className="map-frame",
                                 ),
-                                html.Button("Reset Selection", id="reset-button", n_clicks=0, className="btn btn-secondary"),
+                                html.Div(
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(
+                                                html.Button("Reset Selection", id="reset-button", n_clicks=0, className="btn btn-secondary"),
+                                                width="auto",
+                                            ),
+                                            dbc.Col(
+                                                dcc.Checklist(
+                                                    id="exclude-car-toggle",
+                                                    options=[{"label": " Exclude CAR", "value": "exclude"}],
+                                                    value=[],
+                                                    inline=True,
+                                                    inputStyle={"margin-right": "5px"},
+                                                ),
+                                                width="auto",
+                                                className="d-flex align-items-center",
+                                            ),
+                                        ],
+                                        className="d-flex align-items-center",
+                                    ),
+                                    className="map-controls",  # <--- Add this class
+                                ),
                             ],
                             className="map-container",
                         ),
@@ -160,7 +147,7 @@ def get_selected_region(clickData):
     return clickData["points"][0]["location"]
 
 # Helper function for layout
-def apply_chart_layout(fig, title, x_label="Year", y_label="Value"):
+def apply_chart_layout(fig, title, x_label="Year", y_label="Value", df=None, x_col=None, y_col=None):
     fig.update_layout(
         title=title,
         xaxis_title=x_label,
@@ -173,8 +160,36 @@ def apply_chart_layout(fig, title, x_label="Year", y_label="Value"):
             xanchor="center",
             x=0.5,
         ),
-        margin=dict(b=80)  # Adjust margin for legend placement
+        margin=dict(b=80),  # Adjust margin for legend placement
+        xaxis=dict(
+            showgrid=False,
+            zeroline=False,
+        ),
+        yaxis=dict(
+            showgrid=True,  # Keeps grid lines visible
+            zeroline=True,  # Keeps the zero line visible
+        ),
     )
+
+    if df is not None and x_col is not None:
+        if x_col in df.columns:
+            fig.update_layout(
+                xaxis=dict(
+                    type="category" if df[x_col].dtype == 'O' else "linear",  # Categorical vs numeric handling
+                    tickmode="array",
+                    tickvals=df[x_col].unique().tolist(),  # Ensure all x-axis values are shown
+                )
+            )
+
+    if df is not None and y_col is not None:
+        if y_col in df.columns:
+            fig.update_layout(
+                yaxis=dict(
+                    autorange=True,
+                    tickmode="array",
+                    tickvals=df[y_col].unique().tolist() if df[y_col].dtype == 'O' else None,  # Only force ticks for categorical values
+                )
+            )
 
 # calculate the aggregate on all regions
 all_regions_decadal_avg = gdf_decadal_adm1.groupby(["decade"])[quantitative_columns].mean().reset_index()
@@ -182,19 +197,33 @@ all_regions_monthly_avg = gdf_month_decadal_adm1.groupby(["month", "decade"])[qu
 
 # Callbacks
 @app.callback(
-    Output("choropleth-map", "figure"),
-    [Input("year-slider", "value"),
-     Input("choropleth-map", "clickData"),
-     Input("reset-button", "n_clicks")]  # Capture Reset Button Click
+    [
+        Output("choropleth-map", "figure"),
+        Output("exclude-car-toggle", "value"),  # Ensure checkbox resets visually
+    ],
+    [
+        Input("year-slider", "value"),
+        Input("choropleth-map", "clickData"),
+        Input("reset-button", "n_clicks"),  # Reset trigger
+        Input("exclude-car-toggle", "value"),
+    ],
 )
-def update_choropleth(selected_year, clickData, n_clicks):
+def update_choropleth(selected_year, clickData, n_clicks, exclude_car):
     triggered_id = ctx.triggered_id
-    
+
+    # Reset checkbox when reset button is clicked
+    if triggered_id == "reset-button":
+        exclude_car = []
+
     global_hli_min = gdf_decadal_adm1["HLI"].min()
     global_hli_max = gdf_decadal_adm1["HLI"].max()
 
     # Filter data for the selected year
     filtered_df = gdf_decadal_adm1[gdf_decadal_adm1["decade"] == selected_year]
+
+    # Apply exclusion filter if checkbox is checked
+    if "exclude" in exclude_car:
+        filtered_df = filtered_df[filtered_df["excl_CAR"] == 0]
 
     # Determine the selected region, reset if the reset button is clicked
     if triggered_id == "reset-button":
@@ -243,7 +272,7 @@ def update_choropleth(selected_year, clickData, n_clicks):
         dragmode=False,
     )
 
-    return fig
+    return (fig, exclude_car)
 
 @app.callback(
     [
@@ -254,18 +283,27 @@ def update_choropleth(selected_year, clickData, n_clicks):
     [
         Input("year-slider", "value"),
         Input("choropleth-map", "clickData"),
-        Input("reset-button", "n_clicks")
+        Input("reset-button", "n_clicks"),
+        Input("exclude-car-toggle", "value"),  # Add checkbox input
     ],  
 )
-def update_charts(selected_year, clickData, _):
+def update_charts(selected_year, clickData, _, exclude_car):
     triggered_id = ctx.triggered_id
 
     # Force reset if reset-button is clicked
     selected_region = "All Regions" if triggered_id == "reset-button" else get_selected_region(clickData)
 
+    # Apply exclusion filter if checkbox is checked
+    if "exclude" in exclude_car:
+        filtered_gdf_decadal_adm1 = gdf_decadal_adm1[gdf_decadal_adm1["excl_CAR"] != 1]
+        filtered_gdf_month_decadal_adm1 = gdf_month_decadal_adm1[gdf_month_decadal_adm1["excl_CAR"] != 1]
+    else:
+        filtered_gdf_decadal_adm1 = gdf_decadal_adm1
+        filtered_gdf_month_decadal_adm1 = gdf_month_decadal_adm1
+
     # Use precomputed averages instead of redundant groupby calculations
-    adm1_df = all_regions_decadal_avg if selected_region == "All Regions" else gdf_decadal_adm1[gdf_decadal_adm1["adm1"] == selected_region].copy()
-    adm1_month_df = all_regions_monthly_avg if selected_region == "All Regions" else gdf_month_decadal_adm1[gdf_month_decadal_adm1["adm1"] == selected_region].copy()
+    adm1_df = all_regions_decadal_avg if selected_region == "All Regions" else filtered_gdf_decadal_adm1[filtered_gdf_decadal_adm1["adm1"] == selected_region].copy()
+    adm1_month_df = all_regions_monthly_avg if selected_region == "All Regions" else filtered_gdf_month_decadal_adm1[filtered_gdf_month_decadal_adm1["adm1"] == selected_region].copy()
 
     adm1_df["HLI_5yr_MA"] = adm1_df["HLI"].rolling(window=5, min_periods=1).mean()
     adm1_df["HLI_10yr_MA"] = adm1_df["HLI"].rolling(window=10, min_periods=1).mean()
@@ -329,8 +367,9 @@ def update_charts(selected_year, clickData, _):
             line=dict(width=0.5, dash="dot"),  # Customize color and style
         )
     )
+    
     # Layout settings
-    apply_chart_layout(fig_line, f"HLI Trends - {selected_region}", "Year", "Heat Load Index (HLI)")
+    apply_chart_layout(fig_line, f"HLI Trends - {selected_region}", "Year", "Heat Load Index (HLI)", x_col="decade", df=adm1_df)
 
     # BAR CHART: Temperature and Wind Speed for Selected Year & Region
     # Create figure with secondary y-axis
@@ -384,17 +423,31 @@ def update_charts(selected_year, clickData, _):
     # Add Vertical Line at Selected Year in Bar Chart
     fig_bar.add_shape(
         dict(
-            type="line",
-            x0=selected_year,
-            x1=selected_year,
+            type="rect",
+            x0=selected_year - 5,  # Adjusting to center around the decade
+            x1=selected_year + 5,  # Ensuring the highlight covers the decade properly
             y0=0,
-            y1=max(adm1_df["temperature_2m_mean"].max(), adm1_df["apparent_temperature_mean"].max()),  # Max Y-axis value
-            line=dict(width=0.5, dash="dot"),
+            y1=max(adm1_df["temperature_2m_mean"].max(), adm1_df["apparent_temperature_mean"].max()),  
+            fillcolor="rgba(200, 200, 200, 1)",  # Light gray with 30% opacity
+            layer="below",  # Ensure it is behind all other elements
+            line=dict(width=0),  # No border
         )
     )
 
+    # Remove Y-axis grid lines
+    fig_bar.update_layout(
+        yaxis=dict(
+            showgrid=False,  # Removes primary Y-axis grid
+            zeroline=False,  # Removes zero line
+        ),
+        yaxis2=dict(
+            showgrid=False,  # Removes secondary Y-axis grid
+            zeroline=False,
+        ),
+    )
+
     # Update layout for dual Y-Axis
-    apply_chart_layout(fig_bar, f"Temperature & Wind Speed - {selected_region}", "Decade", "Temperature (°C)")
+    apply_chart_layout(fig_bar, f"Temperature & Wind Speed - {selected_region}", "Decade", "Temperature (°C)", x_col="decade", df=adm1_df)
 
     # LINE CHART: HLI by Month and Decade
     fig_monthly_hli = px.line(
@@ -415,7 +468,7 @@ def update_charts(selected_year, clickData, _):
             trace.opacity = 1.0  # Full opacity for matching line
 
     # Add a title
-    apply_chart_layout(fig_monthly_hli, f"Monthly HLI Trends by Decade - {selected_region}", "Month", "HLI")
+    apply_chart_layout(fig_monthly_hli, f"Monthly HLI Trends by Decade - {selected_region}", "Month", "HLI", x_col="month", df=adm1_month_df)
 
     return fig_line, fig_bar, fig_monthly_hli
 
