@@ -39,8 +39,6 @@ def process_spatial_aggregation(df, group_cols, gdf, crs, adm_col="adm1"):
 
     df_final =  merged_gdf.groupby([adm_col] + [col for col in group_cols if col != "city_name"])[quantitative_columns].mean().reset_index()
 
-    df_final["excl_CAR"] = np.where(df_final[adm_col] == "Cordillera Administrative Region", 1, 0)
-
     return df_final
 
 # Process monthly decadal aggregation
@@ -85,29 +83,7 @@ app.layout = dbc.Container(
                                     dcc.Graph(id="choropleth-map", responsive=True),
                                     className="map-frame",
                                 ),
-                                html.Div(
-                                    dbc.Row(
-                                        [
-                                            dbc.Col(
-                                                html.Button("Reset Selection", id="reset-button", n_clicks=0, className="btn btn-secondary"),
-                                                width="auto",
-                                            ),
-                                            dbc.Col(
-                                                dcc.Checklist(
-                                                    id="exclude-car-toggle",
-                                                    options=[{"label": " Exclude CAR", "value": "exclude"}],
-                                                    value=[],
-                                                    inline=True,
-                                                    inputStyle={"margin-right": "5px"},
-                                                ),
-                                                width="auto",
-                                                className="d-flex align-items-center",
-                                            ),
-                                        ],
-                                        className="d-flex align-items-center",
-                                    ),
-                                    className="map-controls",  # <--- Add this class
-                                ),
+                                html.Button("Reset Selection", id="reset-button", n_clicks=0, className="map-controls"),
                             ],
                             className="map-container",
                         ),
@@ -169,6 +145,9 @@ def apply_chart_layout(fig, title, x_label="Year", y_label="Value", df=None, x_c
             showgrid=True,  # Keeps grid lines visible
             zeroline=True,  # Keeps the zero line visible
         ),
+        dragmode=False,  # ✅ Disables zoom & pan
+        modebar_remove=["zoom", "zoomIn", "zoomOut", "autoScale", "resetScale", "pan", "select", "lasso"], 
+        clickmode="none",  
     )
 
     if df is not None and x_col is not None:
@@ -195,41 +174,43 @@ def apply_chart_layout(fig, title, x_label="Year", y_label="Value", df=None, x_c
 all_regions_decadal_avg = gdf_decadal_adm1.groupby(["decade"])[quantitative_columns].mean().reset_index()
 all_regions_monthly_avg = gdf_month_decadal_adm1.groupby(["month", "decade"])[quantitative_columns].mean().reset_index()
 
+# ✅ Precompute datasets per year (instead of slicing on every slider change)
+preloaded_yearly_data = {
+    year: gdf_decadal_adm1[gdf_decadal_adm1["decade"] == year].copy()
+    for year in gdf_decadal_adm1["decade"].unique()
+}
+
 # Callbacks
 @app.callback(
-    [
-        Output("choropleth-map", "figure"),
-        Output("exclude-car-toggle", "value"),  # Ensure checkbox resets visually
-    ],
+    Output("choropleth-map", "figure"),
     [
         Input("year-slider", "value"),
         Input("choropleth-map", "clickData"),
         Input("reset-button", "n_clicks"),  # Reset trigger
-        Input("exclude-car-toggle", "value"),
     ],
 )
-def update_choropleth(selected_year, clickData, n_clicks, exclude_car):
+def update_choropleth(selected_year, clickData, n_clicks):
     triggered_id = ctx.triggered_id
 
-    # Reset checkbox when reset button is clicked
-    if triggered_id == "reset-button":
-        exclude_car = []
 
     global_hli_min = gdf_decadal_adm1["HLI"].min()
     global_hli_max = gdf_decadal_adm1["HLI"].max()
 
     # Filter data for the selected year
-    filtered_df = gdf_decadal_adm1[gdf_decadal_adm1["decade"] == selected_year]
-
-    # Apply exclusion filter if checkbox is checked
-    if "exclude" in exclude_car:
-        filtered_df = filtered_df[filtered_df["excl_CAR"] == 0]
+    filtered_df = preloaded_yearly_data.get(selected_year, gdf_decadal_adm1.copy())
 
     # Determine the selected region, reset if the reset button is clicked
     if triggered_id == "reset-button":
         selected_region = "All Regions"  # Force reset to ALL REGIONS
     else:
         selected_region = get_selected_region(clickData)  # Only run if reset wasn't clicked
+
+
+    custom_colorscale = [
+        (0.0, "#0000FF"),
+        (0.5, "#FFFF00"),
+        (1.0, "#FF0000")
+    ]
 
     # Create Choropleth Map
     fig = px.choropleth(
@@ -238,7 +219,7 @@ def update_choropleth(selected_year, clickData, n_clicks, exclude_car):
         locations="adm1",
         featureidkey="properties.name",
         color="HLI",
-        color_continuous_scale="thermal",
+        color_continuous_scale=custom_colorscale,
         range_color=[global_hli_min, global_hli_max],
     )
 
@@ -270,9 +251,10 @@ def update_choropleth(selected_year, clickData, n_clicks, exclude_car):
         uirevision=str(n_clicks),
         margin={"r": 0, "t": 0, "l": 0, "b": 0},
         dragmode=False,
+        modebar_remove=["zoom", "zoomIn", "zoomOut", "autoScale", "resetScale", "pan", "select", "lasso"], 
     )
 
-    return (fig, exclude_car)
+    return fig
 
 @app.callback(
     [
@@ -284,26 +266,20 @@ def update_choropleth(selected_year, clickData, n_clicks, exclude_car):
         Input("year-slider", "value"),
         Input("choropleth-map", "clickData"),
         Input("reset-button", "n_clicks"),
-        Input("exclude-car-toggle", "value"),  # Add checkbox input
     ],  
 )
-def update_charts(selected_year, clickData, _, exclude_car):
+def update_charts(selected_year, clickData, _):
     triggered_id = ctx.triggered_id
 
     # Force reset if reset-button is clicked
-    selected_region = "All Regions" if triggered_id == "reset-button" else get_selected_region(clickData)
-
-    # Apply exclusion filter if checkbox is checked
-    if "exclude" in exclude_car:
-        filtered_gdf_decadal_adm1 = gdf_decadal_adm1[gdf_decadal_adm1["excl_CAR"] != 1]
-        filtered_gdf_month_decadal_adm1 = gdf_month_decadal_adm1[gdf_month_decadal_adm1["excl_CAR"] != 1]
+    if triggered_id == "reset-button":
+        selected_region = "All Regions"
     else:
-        filtered_gdf_decadal_adm1 = gdf_decadal_adm1
-        filtered_gdf_month_decadal_adm1 = gdf_month_decadal_adm1
+        selected_region = get_selected_region(clickData)
 
     # Use precomputed averages instead of redundant groupby calculations
-    adm1_df = all_regions_decadal_avg if selected_region == "All Regions" else filtered_gdf_decadal_adm1[filtered_gdf_decadal_adm1["adm1"] == selected_region].copy()
-    adm1_month_df = all_regions_monthly_avg if selected_region == "All Regions" else filtered_gdf_month_decadal_adm1[filtered_gdf_month_decadal_adm1["adm1"] == selected_region].copy()
+    adm1_df = all_regions_decadal_avg if selected_region == "All Regions" else gdf_decadal_adm1[gdf_decadal_adm1["adm1"] == selected_region].copy()
+    adm1_month_df = all_regions_monthly_avg if selected_region == "All Regions" else gdf_month_decadal_adm1[gdf_month_decadal_adm1["adm1"] == selected_region].copy()
 
     adm1_df["HLI_5yr_MA"] = adm1_df["HLI"].rolling(window=5, min_periods=1).mean()
     adm1_df["HLI_10yr_MA"] = adm1_df["HLI"].rolling(window=10, min_periods=1).mean()
@@ -381,7 +357,7 @@ def update_charts(selected_year, clickData, _, exclude_car):
             x=adm1_df["decade"],
             y=adm1_df["temperature_2m_mean"],
             name="Mean Temp",
-            marker=dict(color="#A7C7E7"),
+            marker=dict(color="#4DAF4A"),
         ),
         secondary_y=False,
     )
@@ -391,7 +367,7 @@ def update_charts(selected_year, clickData, _, exclude_car):
             x=adm1_df["decade"],
             y=adm1_df["apparent_temperature_mean"],
             name="Apparent Temp",
-            marker=dict(color="#D1B3E0"),
+            marker=dict(color="#984EA3"),
         ),
         secondary_y=False,
     )
@@ -403,7 +379,7 @@ def update_charts(selected_year, clickData, _, exclude_car):
             y=adm1_df["wind_speed_10m_max"],
             mode="markers+lines",
             name="Wind Speed",
-            line=dict(dash="dot", width=2, color="#5E548E"),
+            line=dict(dash="dot", width=2, color="#1F78B4"),
         ),
         secondary_y=True,  # Assign this trace to the secondary y-axis
     )
@@ -457,6 +433,7 @@ def update_charts(selected_year, clickData, _, exclude_car):
         color="decade",
         labels={"month": "Month", "HLI": "Heat Load Index (HLI)", "decade": "Decade"},
         markers=True,  # Adds markers
+        color_discrete_sequence=px.colors.qualitative.Plotly
     )
     # Set opacity for all lines to 50% by default
     for trace in fig_monthly_hli.data:
