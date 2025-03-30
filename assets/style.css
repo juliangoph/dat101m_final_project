@@ -1,6 +1,9 @@
-.map-container {
-  position: relative;
-  width: 100%;
+#choropleth-map {
+  height: 87vh;
+}
+
+.chart-container {
+  padding-bottom: 10px;
 }
 
 .map-frame {
@@ -27,17 +30,17 @@
   background-color: rgba(230, 230, 230, 1);
 }
 
-.slider-container {
-  padding-bottom: 15px;
-}
-
 #line-chart,
 #bar-chart,
 #line-chart-hli-monthly {
-  height: 30vh;
-  width: 100%;
+  height: 30vh; /* Default height for larger screens */
 }
 
-.chart-container {
-  padding-bottom: 15px;
+/* Adjust to 90vh when screen width is smaller than Bootstrap "sm" (576px) */
+@media screen and (max-width: 576px) {
+  #line-chart,
+  #bar-chart,
+  #line-chart-hli-monthly {
+    height: 90vh;
+  }
 }

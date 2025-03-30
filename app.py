@@ -95,7 +95,7 @@ app.layout = dbc.Container(
     [
         # Title
         dbc.Row(
-            dbc.Col(html.H1("Philippine Climate Data Visualization", className="text-center mb-4"))
+            dbc.Col(html.H1("Philippine Climate Data Visualization - WIP", className="text-center mb-4"))
         ),
         # Main content (Map + Charts)
         dbc.Row(
@@ -117,7 +117,7 @@ app.layout = dbc.Container(
                         html.Div(
                             [
                                 html.Div(
-                                    dcc.Graph(id="choropleth-map", style={"height": "87vh"}, responsive=True),
+                                    dcc.Graph(id="choropleth-map", responsive=True),
                                     className="map-frame",
                                 ),
                                 html.Button("Reset Selection", id="reset-button", n_clicks=0, className="btn btn-secondary"),
@@ -125,11 +125,12 @@ app.layout = dbc.Container(
                             className="map-container",
                         ),
                     ],
-                    width={"size": 6, "order": 1, "offset": 0},  # Default 6/12 width
+                    width=6,
                     xs=12,
                     sm=12,
                     md=6,
                     lg=6,
+                    
                 ),
 
                 # Right Column: Charts
@@ -139,17 +140,18 @@ app.layout = dbc.Container(
                         html.Div(dcc.Graph(id="bar-chart", responsive=True), className="chart-container"),
                         html.Div(dcc.Graph(id="line-chart-hli-monthly", responsive=True), className="chart-container"),
                     ],
-                    width={"size": 6, "order": 1, "offset": 0},  # Default 6/12 width
+                    width=6,
                     xs=12,
                     sm=12,
                     md=6,
                     lg=6,
+
                 )
             ]
         ),
     ],
     fluid=True,  # Makes the container full-width
-    className="p-4 bg-light",  # Adds padding and background color
+    className="pb-5 bg-light",  # Adds padding and background color
 )
 
 def get_selected_region(clickData):
@@ -249,10 +251,13 @@ def update_choropleth(selected_year, clickData, n_clicks):
         Output("bar-chart", "figure"),
         Output("line-chart-hli-monthly", "figure"),
     ],
-    [Input("choropleth-map", "clickData"),
-     Input("reset-button", "n_clicks")],  
+    [
+        Input("year-slider", "value"),
+        Input("choropleth-map", "clickData"),
+        Input("reset-button", "n_clicks")
+    ],  
 )
-def update_charts(clickData, _):
+def update_charts(selected_year, clickData, _):
     triggered_id = ctx.triggered_id
 
     # Force reset if reset-button is clicked
@@ -313,6 +318,17 @@ def update_charts(clickData, _):
         )
     )
 
+    # Add Vertical Line at Selected Year
+    fig_line.add_shape(
+        dict(
+            type="line",
+            x0=selected_year,  # Position on x-axis
+            x1=selected_year,  # Same x position to form a vertical line
+            y0=adm1_df["HLI"].min(),  # Start from the lowest value in HLI
+            y1=adm1_df["HLI"].max(),  # End at the highest value in HLI
+            line=dict(width=0.5, dash="dot"),  # Customize color and style
+        )
+    )
     # Layout settings
     apply_chart_layout(fig_line, f"HLI Trends - {selected_region}", "Year", "Heat Load Index (HLI)")
 
@@ -326,6 +342,7 @@ def update_charts(clickData, _):
             x=adm1_df["decade"],
             y=adm1_df["temperature_2m_mean"],
             name="Mean Temp",
+            marker=dict(color="#A7C7E7"),
         ),
         secondary_y=False,
     )
@@ -335,6 +352,7 @@ def update_charts(clickData, _):
             x=adm1_df["decade"],
             y=adm1_df["apparent_temperature_mean"],
             name="Apparent Temp",
+            marker=dict(color="#D1B3E0"),
         ),
         secondary_y=False,
     )
@@ -346,7 +364,7 @@ def update_charts(clickData, _):
             y=adm1_df["wind_speed_10m_max"],
             mode="markers+lines",
             name="Wind Speed",
-            line=dict(dash="dot", width=2),
+            line=dict(dash="dot", width=2, color="#5E548E"),
         ),
         secondary_y=True,  # Assign this trace to the secondary y-axis
     )
@@ -358,9 +376,21 @@ def update_charts(clickData, _):
             y=adm1_df["shortwave_radiation_sum"],
             mode="markers+lines",
             name="Shortwave Radiation",
-            line=dict(dash="dot", width=2),
+            line=dict(dash="dot", width=2,  color="#AC6C57"),
         ),
         secondary_y=True,  # Assign this trace to the secondary y-axis
+    )
+
+    # Add Vertical Line at Selected Year in Bar Chart
+    fig_bar.add_shape(
+        dict(
+            type="line",
+            x0=selected_year,
+            x1=selected_year,
+            y0=0,
+            y1=max(adm1_df["temperature_2m_mean"].max(), adm1_df["apparent_temperature_mean"].max()),  # Max Y-axis value
+            line=dict(width=0.5, dash="dot"),
+        )
     )
 
     # Update layout for dual Y-Axis
@@ -375,6 +405,14 @@ def update_charts(clickData, _):
         labels={"month": "Month", "HLI": "Heat Load Index (HLI)", "decade": "Decade"},
         markers=True,  # Adds markers
     )
+    # Set opacity for all lines to 50% by default
+    for trace in fig_monthly_hli.data:
+        trace.opacity = 0.2  # Default opacity
+
+    # Increase opacity to 100% if the decade matches the selected year
+    for trace in fig_monthly_hli.data:
+        if str(trace.name) == str(selected_year):  # Match decade with slider
+            trace.opacity = 1.0  # Full opacity for matching line
 
     # Add a title
     apply_chart_layout(fig_monthly_hli, f"Monthly HLI Trends by Decade - {selected_region}", "Month", "HLI")
