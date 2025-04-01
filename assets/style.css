@@ -1,8 +1,16 @@
 #choropleth-map {
-  height: 87vh;
+  height: 87.5vh;
 }
 
 .chart-container {
+  padding-bottom: 10px;
+}
+
+.slider-container {
+  padding-bottom: 10px;
+}
+
+.choropleth-container {
   padding-bottom: 10px;
 }
 
@@ -16,8 +24,8 @@
   height: 30vh; /* Default height for larger screens */
 }
 
-/* Adjust to 90vh when screen width is smaller than Bootstrap "sm" (576px) */
-@media screen and (max-width: 576px) {
+/* Adjust to 90vh when screen width is smaller than Bootstrap "sm" (768px) */
+@media screen and (max-width: 768px) {
   #line-chart,
   #bar-chart,
   #line-chart-hli-monthly {
@@ -46,7 +54,7 @@
   display: flex;
   gap: 10px; /* Adds spacing between button and toggle */
   align-items: center; /* Aligns items properly */
-  color: black !important; /* ✅ Ensure text is visible */
-  font-weight: bold; /* ✅ Make text more readable */
-  border: 1px solid rgba(0, 0, 0, 0.2); /* ✅ Add a subtle border */
+  color: black !important; /* Ensure text is visible */
+  font-weight: bold; /* Make text more readable */
+  border: 1px solid rgba(0, 0, 0, 0.2); /* Add a subtle border */
 }
