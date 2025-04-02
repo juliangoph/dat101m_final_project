@@ -45,3 +45,12 @@
   display: flex;
   align-items: center; /* Aligns items properly */
 }
+
+#play-button {
+  position: fixed;
+  bottom: 40px;
+  left: 40px;
+  width: 60px;
+  height: 60px;
+  z-index: 1000;
+}

@@ -236,14 +236,6 @@ app.layout = html.Div(
             id="play-button",
             color="primary",
             className="rounded-circle border-0 d-flex align-items-center justify-content-center",
-            style={
-                "position": "fixed",
-                "bottom": "40px",
-                "left": "40px",
-                "width": "60px",
-                "height": "60px",
-                "zIndex": "1000",
-            },
         ),
     ]
 )
