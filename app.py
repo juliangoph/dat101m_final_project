@@ -119,7 +119,8 @@ app.layout = html.Div(
                 ],
                 fluid=True,
             ),
-            color="light",
+            color="dark",
+            dark=True,
             sticky="top",
         ),
         # Main content
