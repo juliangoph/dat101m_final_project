@@ -41,20 +41,7 @@
   position: absolute;
   top: 10px;
   left: 10px;
-  background-color: rgba(
-    255,
-    255,
-    255,
-    0.2
-  ); /* Make background slightly more visible */
-  padding: 8px 12px; /* Increase padding for better spacing */
-  border-radius: 5px;
-  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
   z-index: 10; /* Keeps it above the map */
   display: flex;
-  gap: 10px; /* Adds spacing between button and toggle */
   align-items: center; /* Aligns items properly */
-  color: black !important; /* Ensure text is visible */
-  font-weight: bold; /* Make text more readable */
-  border: 1px solid rgba(0, 0, 0, 0.2); /* Add a subtle border */
 }

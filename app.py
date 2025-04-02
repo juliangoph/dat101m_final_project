@@ -3,7 +3,6 @@ from dash import dcc, html, Input, Output, ctx
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-import numpy as np
 import geopandas as gpd
 import json
 from plotly.subplots import make_subplots
@@ -85,90 +84,139 @@ gdf_decadal_adm1["decade"] = gdf_decadal_adm1["decade"].astype(int, errors="igno
 
 
 # create dash app
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(external_stylesheets=[dbc.themes.YETI, dbc.icons.BOOTSTRAP])
 server = app.server  # Required for deployment with Gunicorn
 
-app.layout = dbc.Container(
+app.layout = html.Div(
     [
-        # Title
-        dbc.Row(
-            dbc.Col(
-                html.H1(
-                    "Philippine Climate Data Visualization - WIP",
-                    className="text-center mb-4",
-                )
-            )
-        ),
-        # Main content (Map + Charts)
-        dbc.Row(
-            [
-                # Left Column: Map
-                dbc.Col(
-                    [
-                        html.Div(
-                            dcc.Slider(
-                                id="year-slider",
-                                min=int(gdf_decadal_adm1["decade"].min()),
-                                max=int(gdf_decadal_adm1["decade"].max()),
-                                value=int(gdf_decadal_adm1["decade"].min()),
-                                marks={
-                                    str(int(decade)): str(int(decade))
-                                    for decade in gdf_decadal_adm1["decade"].unique()
-                                },
-                                step=None,
-                            ),
-                            className="slider-container",
-                        ),
-                        html.Div(
+        dbc.Navbar(
+            dbc.Container(
+                [
+                    html.A(
+                        dbc.Row(
                             [
-                                html.Div(
-                                    dcc.Graph(id="choropleth-map", responsive=True),
-                                    className="map-frame",
+                                dbc.Col(dbc.NavbarBrand(" ", className="ms-2")),
+                            ],
+                        ),
+                        className="navbar-brand",
+                    ),
+                    dbc.Nav(
+                        [
+                            dbc.NavItem(dbc.NavLink("Documentation", href="#")),
+                            dbc.NavItem(
+                                dbc.NavLink(
+                                    html.I(className="bi bi-github"),
+                                    href="https://github.com/juliangoph/dat101m-final-project",
+                                    className="d-flex align-items-center",
+                                )
+                            ),
+                        ]
+                    ),
+                ],
+                fluid=True,
+            ),
+            color="dark",
+            dark=True,
+        ),
+        # Main content
+        dbc.Container(
+            [
+                html.Div(
+                    [
+                        dbc.Container(
+                            [
+                                html.H1(
+                                    "Philippine Climate Data Visualization",
+                                    className="display-3",
                                 ),
-                                html.Button(
-                                    "Reset Selection",
-                                    id="reset-button",
-                                    n_clicks=0,
-                                    className="map-controls",
+                                html.P(
+                                    "Head Index across the Philippines between 1950-2025",
+                                    className="lead",
                                 ),
                             ],
-                            className="map-container",
+                            fluid=True,
+                            className="py-3",
                         ),
                     ],
-                    width=6,
-                    xs=12,
-                    sm=12,
-                    md=6,
-                    lg=6,
-                    className="choropleth-container",
+                    className="p-3",
                 ),
-                # Right Column: Charts
-                dbc.Col(
+                # Main content (Map + Charts)
+                dbc.Row(
                     [
-                        html.Div(
-                            dcc.Graph(id="line-chart", responsive=True),
-                            className="chart-container",
+                        # Left Column: Map
+                        dbc.Col(
+                            [
+                                html.Div(
+                                    dcc.Slider(
+                                        id="year-slider",
+                                        min=int(gdf_decadal_adm1["decade"].min()),
+                                        max=int(gdf_decadal_adm1["decade"].max()),
+                                        value=int(gdf_decadal_adm1["decade"].min()),
+                                        marks={
+                                            str(int(decade)): str(int(decade))
+                                            for decade in gdf_decadal_adm1[
+                                                "decade"
+                                            ].unique()
+                                        },
+                                        step=None,
+                                    ),
+                                    className="slider-container",
+                                ),
+                                html.Div(
+                                    [
+                                        html.Div(
+                                            dcc.Graph(
+                                                id="choropleth-map", responsive=True
+                                            ),
+                                            className="map-frame",
+                                        ),
+                                        dbc.Button(
+                                            "Reset Selection",
+                                            color="secondary",
+                                            id="reset-button",
+                                            n_clicks=0,
+                                            className="map-controls me-1",
+                                        ),
+                                    ],
+                                    className="map-container",
+                                ),
+                            ],
+                            width=6,
+                            xs=12,
+                            sm=12,
+                            md=6,
+                            lg=6,
+                            className="choropleth-container",
                         ),
-                        html.Div(
-                            dcc.Graph(id="bar-chart", responsive=True),
-                            className="chart-container",
+                        # Right Column: Charts
+                        dbc.Col(
+                            [
+                                html.Div(
+                                    dcc.Graph(id="line-chart", responsive=True),
+                                    className="chart-container",
+                                ),
+                                html.Div(
+                                    dcc.Graph(id="bar-chart", responsive=True),
+                                    className="chart-container",
+                                ),
+                                html.Div(
+                                    dcc.Graph(
+                                        id="line-chart-hli-monthly", responsive=True
+                                    ),
+                                    className="chart-container",
+                                ),
+                            ],
+                            width=6,
+                            xs=12,
+                            sm=12,
+                            md=6,
+                            lg=6,
                         ),
-                        html.Div(
-                            dcc.Graph(id="line-chart-hli-monthly", responsive=True),
-                            className="chart-container",
-                        ),
-                    ],
-                    width=6,
-                    xs=12,
-                    sm=12,
-                    md=6,
-                    lg=6,
+                    ]
                 ),
             ]
         ),
-    ],
-    fluid=True,  # Makes the container full-width
-    className="pb-5 bg-light",  # Adds padding and background color
+    ]
 )
 
 
