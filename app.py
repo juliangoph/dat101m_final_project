@@ -1,5 +1,5 @@
 import dash
-from dash import dcc, html, Input, Output, ctx
+from dash import dcc, html, Input, Output, State, ctx
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
@@ -95,7 +95,11 @@ app.layout = html.Div(
                     html.A(
                         dbc.Row(
                             [
-                                dbc.Col(dbc.NavbarBrand(" ", className="ms-2")),
+                                dbc.Col(
+                                    dbc.NavbarBrand(
+                                        "DAT101M - Final Project", className="ms-2"
+                                    )
+                                ),
                             ],
                         ),
                         className="navbar-brand",
@@ -115,8 +119,8 @@ app.layout = html.Div(
                 ],
                 fluid=True,
             ),
-            color="dark",
-            dark=True,
+            color="light",
+            sticky="top",
         ),
         # Main content
         dbc.Container(
@@ -126,7 +130,7 @@ app.layout = html.Div(
                         dbc.Container(
                             [
                                 html.H1(
-                                    "Philippine Climate Data Visualization",
+                                    "Urban Heat Index",
                                     className="display-3",
                                 ),
                                 html.P(
@@ -146,22 +150,31 @@ app.layout = html.Div(
                         # Left Column: Map
                         dbc.Col(
                             [
-                                html.Div(
-                                    dcc.Slider(
-                                        id="year-slider",
-                                        min=int(gdf_decadal_adm1["decade"].min()),
-                                        max=int(gdf_decadal_adm1["decade"].max()),
-                                        value=int(gdf_decadal_adm1["decade"].min()),
-                                        marks={
-                                            str(int(decade)): str(int(decade))
-                                            for decade in gdf_decadal_adm1[
-                                                "decade"
-                                            ].unique()
-                                        },
-                                        step=None,
-                                    ),
+                                dbc.Row(
+                                    [
+                                        dcc.Slider(
+                                            id="year-slider",
+                                            min=int(gdf_decadal_adm1["decade"].min()),
+                                            max=int(gdf_decadal_adm1["decade"].max()),
+                                            value=int(gdf_decadal_adm1["decade"].min()),
+                                            marks={
+                                                str(int(decade)): str(int(decade))
+                                                for decade in gdf_decadal_adm1[
+                                                    "decade"
+                                                ].unique()
+                                            },
+                                            step=None,
+                                        ),
+                                    ],
                                     className="slider-container",
                                 ),
+                                dcc.Interval(
+                                    id="play-interval",
+                                    interval=1000,
+                                    n_intervals=0,
+                                    disabled=True,
+                                ),
+                                dcc.Store(id="play-state", data={"playing": False}),
                                 html.Div(
                                     [
                                         html.Div(
@@ -171,7 +184,7 @@ app.layout = html.Div(
                                             className="map-frame",
                                         ),
                                         dbc.Button(
-                                            "Reset Selection",
+                                            "All Regions",
                                             color="secondary",
                                             id="reset-button",
                                             n_clicks=0,
@@ -215,6 +228,21 @@ app.layout = html.Div(
                     ]
                 ),
             ]
+        ),
+        # Floating play button
+        dbc.Button(
+            html.I(className="bi bi-play-fill fs-4"),
+            id="play-button",
+            color="primary",
+            className="rounded-circle border-0 d-flex align-items-center justify-content-center",
+            style={
+                "position": "fixed",
+                "bottom": "40px",
+                "left": "40px",
+                "width": "60px",
+                "height": "60px",
+                "zIndex": "1000",
+            },
         ),
     ]
 )
@@ -527,7 +555,7 @@ def update_charts(selected_year, clickData, _):
     # Layout settings
     apply_chart_layout(
         fig_line,
-        f"HLI Trends - {selected_region}",
+        f"HLI Trends ({selected_region})",
         "Year",
         "Heat Load Index (HLI)",
         x_col="decade",
@@ -626,7 +654,7 @@ def update_charts(selected_year, clickData, _):
     # Update layout for dual Y-Axis
     apply_chart_layout(
         fig_bar,
-        f"Temperature & Wind Speed - {selected_region}",
+        f"Temperature & Wind Speed ({selected_region})",
         "Decade",
         "Temperature (°C)",
         x_col="decade",
@@ -674,7 +702,7 @@ def update_charts(selected_year, clickData, _):
     # Add a title
     apply_chart_layout(
         fig_monthly_hli,
-        f"Monthly HLI Trends by Decade - {selected_region}",
+        f"Monthly HLI Trends - {selected_year} vs Other Decades ({selected_region})",
         "Month",
         "HLI",
         x_col="month",
@@ -686,7 +714,43 @@ def update_charts(selected_year, clickData, _):
     return fig_line, fig_bar, fig_monthly_hli
 
 
+@app.callback(
+    [
+        Output("play-interval", "disabled"),
+        Output("play-button", "children"),
+        Output("play-state", "data"),
+    ],
+    Input("play-button", "n_clicks"),
+    State("play-state", "data"),
+    prevent_initial_call=True,
+)
+def toggle_play(n_clicks, play_state):
+    playing = not play_state["playing"]
+    icon = (
+        html.I(className="bi bi-pause-fill fs-4")
+        if playing
+        else html.I(className="bi bi-play-fill fs-4")
+    )
+    return not playing, icon, {"playing": playing}
+
+
+@app.callback(
+    Output("year-slider", "value"),
+    Input("play-interval", "n_intervals"),
+    State("year-slider", "value"),
+    prevent_initial_call=True,
+)
+def step_year_slider(n, current_year):
+    decades = sorted(gdf_decadal_adm1["decade"].unique())
+    if current_year not in decades:
+        return decades[0]
+
+    current_idx = decades.index(current_year)
+    next_idx = (current_idx + 1) % len(decades)  # Loop back to start
+    return decades[next_idx]
+
+
 # Run app
 if __name__ == "__main__":
-    # app.run_server(debug=True)
-    app.run(debug=True)
+    # app.run(debug=True)
+    app.run()
