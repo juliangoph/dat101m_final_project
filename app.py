@@ -106,7 +106,6 @@ app.layout = html.Div(
                     ),
                     dbc.Nav(
                         [
-                            dbc.NavItem(dbc.NavLink("Documentation", href="#")),
                             dbc.NavItem(
                                 dbc.NavLink(
                                     html.I(className="bi bi-github"),
